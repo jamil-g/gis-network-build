@@ -1,0 +1,24 @@
+# Environment - real secrets/credentials live here, only .env.example is committed
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Test/reference input data - large real-world files, not part of the source (see README)
+data/
+
+# draw.io lock/backup files
+design/.$*.bkp

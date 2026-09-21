@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GIS Network Builder</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>GIS Network Builder</h1>
+    <nav><a href="map.html">Route map &rarr;</a></nav>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>1. Upload a GIS file</h2>
+      <p class="hint">GeoJSON, Shapefile (select all sidecar files), File Geodatabase (.gdb folder), or GeoPackage.
+        If the file has multiple layers, the first polyline layer is used automatically - you'll be told which one.</p>
+      <input type="file" id="file-input" multiple />
+      <div style="margin-top: 12px;">
+        <button id="assess-btn">Assess file</button>
+      </div>
+      <div id="assess-error" class="error" hidden></div>
+      <div id="assess-result" hidden style="margin-top: 18px;">
+        <label>Network Readiness</label>
+        <div class="score" id="assess-score"></div>
+        <p class="hint">A data-completeness signal for routing - not a percentage of routes that will come out correct.</p>
+        <div class="hint" id="assess-layer-note" hidden></div>
+        <table style="margin-top: 12px;">
+          <thead><tr><th>Category</th><th>Score</th></tr></thead>
+          <tbody id="assess-categories"></tbody>
+        </table>
+        <ul class="notes" id="assess-notes"></ul>
+      </div>
+    </div>
+
+    <div class="card" id="build-card" hidden>
+      <h2>2. Build the routing network</h2>
+      <p class="hint">Completes missing attributes, builds pgRouting topology, and loads it into the given schema.</p>
+      <div class="row">
+        <div>
+          <label for="schema-input">Schema name</label>
+          <input type="text" id="schema-input" value="network" />
+        </div>
+        <div style="flex: 0;">
+          <button id="preprocess-btn">Build network</button>
+        </div>
+      </div>
+      <div id="preprocess-error" class="error" hidden></div>
+      <div id="preprocess-result" hidden style="margin-top: 12px;">
+        <label>Network Readiness</label>
+        <div class="row">
+          <div>
+            <label>Before</label>
+            <div class="score" id="score-before"></div>
+          </div>
+          <div>
+            <label>After</label>
+            <div class="score" id="score-after"></div>
+          </div>
+        </div>
+        <p class="hint">A data-completeness signal for routing - not a percentage of routes that will come out correct.</p>
+        <p class="hint" id="topology-summary"></p>
+        <ul class="notes" id="preprocess-notes"></ul>
+        <p style="margin-top: 14px;"><a id="open-map-link" href="#">Open this network on the route map &rarr;</a></p>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let uploadedFileBase64 = null;
+
+    function scoreClass(score) {
+      if (score >= 70) return "good";
+      if (score >= 40) return "mid";
+      return "bad";
+    }
+
+    function renderCategoryScores(tbody, categoryScores) {
+      tbody.innerHTML = "";
+      for (const [category, score] of Object.entries(categoryScores)) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${category}</td><td>${score}</td>`;
+        tbody.appendChild(row);
+      }
+    }
+
+    function renderNotes(list, notes) {
+      list.innerHTML = "";
+      for (const note of notes || []) {
+        const li = document.createElement("li");
+        li.textContent = note;
+        list.appendChild(li);
+      }
+    }
+
+    document.getElementById("assess-btn").addEventListener("click", async () => {
+      const files = document.getElementById("file-input").files;
+      const errorEl = document.getElementById("assess-error");
+      const resultEl = document.getElementById("assess-result");
+      errorEl.hidden = true;
+      resultEl.hidden = true;
+      document.getElementById("build-card").hidden = true;
+
+      if (!files.length) {
+        errorEl.textContent = "Choose a file first.";
+        errorEl.hidden = false;
+        return;
+      }
+
+      const btn = document.getElementById("assess-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Assessing...';
+      try {
+        uploadedFileBase64 = await zipAndEncodeFiles(files);
+        const result = await apiPost("/assess", { file_base64: uploadedFileBase64 });
+
+        const scoreEl = document.getElementById("assess-score");
+        scoreEl.textContent = `${result.overall_score} / 100`;
+        scoreEl.className = `score ${scoreClass(result.overall_score)}`;
+
+        const layerNoteEl = document.getElementById("assess-layer-note");
+        if (result.layer_selection) {
+          const others = result.layer_selection.all_layers
+            .filter(([name]) => name !== result.layer_selection.selected_layer)
+            .map(([name, type]) => `${name} (${type})`);
+          layerNoteEl.textContent = others.length
+            ? `Used layer "${result.layer_selection.selected_layer}" - other layers found: ${others.join(", ")}. If this isn't the right one, keep only the intended layer in your source file and re-upload.`
+            : `Used layer "${result.layer_selection.selected_layer}".`;
+          layerNoteEl.hidden = false;
+        } else {
+          layerNoteEl.hidden = true;
+        }
+
+        renderCategoryScores(document.getElementById("assess-categories"), result.category_scores);
+        renderNotes(document.getElementById("assess-notes"), result.notes);
+        document.getElementById("schema-input").value = normalizeSchemaName(files[0].name);
+        resultEl.hidden = false;
+        document.getElementById("build-card").hidden = false;
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.hidden = false;
+        uploadedFileBase64 = null;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Assess file";
+      }
+    });
+
+    document.getElementById("preprocess-btn").addEventListener("click", async () => {
+      const schema = document.getElementById("schema-input").value.trim();
+      const errorEl = document.getElementById("preprocess-error");
+      const resultEl = document.getElementById("preprocess-result");
+      errorEl.hidden = true;
+      resultEl.hidden = true;
+
+      if (!uploadedFileBase64) {
+        errorEl.textContent = "Assess a file first.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (!schema) {
+        errorEl.textContent = "Enter a schema name.";
+        errorEl.hidden = false;
+        return;
+      }
+
+      const btn = document.getElementById("preprocess-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Building...';
+      try {
+        const result = await apiPost("/preprocess", { file_base64: uploadedFileBase64, output_schema: schema });
+
+        const beforeEl = document.getElementById("score-before");
+        beforeEl.textContent = `${result.before.overall_score} / 100`;
+        beforeEl.className = `score ${scoreClass(result.before.overall_score)}`;
+        const afterEl = document.getElementById("score-after");
+        afterEl.textContent = `${result.after.overall_score} / 100`;
+        afterEl.className = `score ${scoreClass(result.after.overall_score)}`;
+
+        document.getElementById("topology-summary").textContent =
+          `Loaded into pgRouting: ${result.schema}.${result.table} - ${result.topology.edge_count} edges, ${result.topology.node_count} nodes (SRID ${result.topology.srid})`;
+        renderNotes(document.getElementById("preprocess-notes"), result.after.notes);
+
+        document.getElementById("open-map-link").href = `map.html?schema=${encodeURIComponent(result.schema)}`;
+        resultEl.hidden = false;
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Build network";
+      }
+    });
+  </script>
+</body>
+</html>

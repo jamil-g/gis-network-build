@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GIS Network Builder - Route Map</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { height: 100vh; overflow: hidden; }
+    header { position: relative; z-index: 2; }
+    #map { position: absolute; top: 61px; left: 0; right: 0; bottom: 0; }
+
+    #panel {
+      position: absolute;
+      top: 77px;
+      left: 16px;
+      width: 320px;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      z-index: 1;
+    }
+    #panel .card { margin-bottom: 12px; }
+
+    .point-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+    .point-row input { flex: 1; }
+    .point-row input.active-input { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18); }
+    .point-row .point-label { width: 46px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .point-row button { padding: 4px 8px; flex-shrink: 0; }
+    .point-row button[hidden] { display: none; }
+
+    #click-hint { font-size: 12px; color: var(--accent-dark); font-weight: 600; margin: 0 0 8px; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
+    .checkbox-row input { width: auto; }
+
+    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .swatch { width: 18px; height: 3px; display: inline-block; }
+
+    .basemap-buttons { display: flex; gap: 6px; }
+    .basemap-buttons button { flex: 1; padding: 6px 4px; font-size: 12px; }
+    .basemap-buttons button.active { background: var(--accent); color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Route map</h1>
+    <nav><a href="index.html">&larr; Upload / build network</a></nav>
+  </header>
+
+  <div id="map"></div>
+
+  <div id="panel">
+    <div class="card">
+      <h2>Network</h2>
+      <label for="schema-select">Schema</label>
+      <select id="schema-select"></select>
+    </div>
+
+    <div class="card">
+      <h2>Basemap</h2>
+      <div class="basemap-buttons">
+        <button type="button" class="secondary active" data-basemap="streets">Streets</button>
+        <button type="button" class="secondary" data-basemap="satellite">Satellite</button>
+        <button type="button" class="secondary" data-basemap="none">None</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Points</h2>
+      <p id="click-hint">Click the map to set: Start</p>
+      <div id="points-list"></div>
+      <button class="secondary" id="add-point-btn" type="button">+ Add point</button>
+
+      <label for="algorithm-select" style="margin-top: 10px;">Algorithm</label>
+      <select id="algorithm-select">
+        <option value="dijkstra">Dijkstra</option>
+        <option value="astar">A*</option>
+      </select>
+      <p class="hint" id="algorithm-hint" hidden>Route correction always uses Dijkstra - the algorithm choice only applies to a plain route.</p>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="correct-checkbox" />
+        <label for="correct-checkbox" style="margin: 0;">Correct against OSRM</label>
+      </div>
+
+      <button id="route-btn" style="width: 100%;">Calculate route</button>
+      <div id="route-error" class="error" hidden></div>
+    </div>
+
+    <div class="card" id="result-card" hidden>
+      <h2>Result</h2>
+      <div id="route-summary"></div>
+      <div class="legend" id="route-legend" hidden>
+        <span><span class="swatch" style="background:#9ca3af; border-top: 2px dashed #9ca3af; height:0;"></span>Original</span>
+        <span><span class="swatch" style="background:#2563eb;"></span>Corrected</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const BASEMAP_STYLES = {
+      streets: "https://tiles.openfreemap.org/styles/liberty",
+      satellite: {
+        version: 8,
+        sources: {
+          "esri-imagery": {
+            type: "raster",
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            attribution: "Esri, Maxar, Earthstar Geographics",
+          },
+        },
+        layers: [{ id: "esri-imagery", type: "raster", source: "esri-imagery" }],
+      },
+      none: {
+        version: 8,
+        sources: {},
+        layers: [{ id: "background", type: "background", paint: { "background-color": "#eef1f6" } }],
+      },
+    };
+
+    const map = new maplibregl.Map({
+      container: "map",
+      style: BASEMAP_STYLES.streets,
+      center: [23.7275, 37.9755], // central Athens, matching this project's own test data
+      zoom: 14,
+    });
+    map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+    // --- Basemap switching -------------------------------------------------
+    // setStyle() wipes every custom source/layer, so both the network overlay
+    // and any rendered route are re-added on "style.load" from the state kept
+    // below. Markers are plain DOM overlays, not part of the style, so they
+    // survive a setStyle() on their own and don't need restoring.
+    //
+    // { diff: false } is required here: by default setStyle() *diffs* against
+    // the current style and patches it in place - since our network/route
+    // layers were added dynamically (not part of either style's own JSON),
+    // the diff treats them as "removed" and drops them, and a diffed switch
+    // never fires "style.load" at all (confirmed against the maplibre-gl
+    // 4.7.1 source - diffing goes through Style.setState(), a different,
+    // silent code path from the full loadJSON/loadURL reload that fires it).
+    // Forcing a full reload guarantees both a clean style and a reliable
+    // "style.load" to hook the restore into.
+    document.querySelectorAll(".basemap-buttons button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".basemap-buttons button").forEach((b) => b.classList.toggle("active", b === btn));
+        map.setStyle(BASEMAP_STYLES[btn.dataset.basemap], { diff: false });
+      });
+    });
+    map.on("style.load", () => {
+      if (currentNetworkGeojson) addNetworkLayer(currentNetworkGeojson);
+      if (currentRouteState) renderRouteState(currentRouteState);
+    });
+
+    // --- Point inputs: focus highlighting + click-to-fill ------------------
+    let activeInput = null;
+
+    function setActiveInput(input) {
+      document.querySelectorAll(".point-row input").forEach((el) => el.classList.remove("active-input"));
+      activeInput = input && document.body.contains(input) ? input : null;
+      if (activeInput) activeInput.classList.add("active-input");
+      updateClickHint();
+    }
+
+    function updateClickHint() {
+      const hintEl = document.getElementById("click-hint");
+      if (!activeInput) {
+        hintEl.textContent = "Click a point field, then click the map to set its coordinate.";
+        return;
+      }
+      const label = activeInput.closest(".point-row").querySelector(".point-label").textContent;
+      hintEl.textContent = `Click the map to set: ${label}`;
+    }
+
+    function pointRow(value) {
+      const row = document.createElement("div");
+      row.className = "point-row";
+      row.innerHTML = `
+        <span class="point-label"></span>
+        <input type="text" value="${value || ""}" placeholder='lat,lon or address' />
+        <button class="secondary remove-point-btn" type="button" title="Remove">&times;</button>
+      `;
+      const input = row.querySelector("input");
+      input.addEventListener("focus", () => setActiveInput(input));
+      row.querySelector(".remove-point-btn").addEventListener("click", () => {
+        if (activeInput === input) setActiveInput(null);
+        row.remove();
+        relabelPoints();
+      });
+      return row;
+    }
+
+    function relabelPoints() {
+      const rows = [...document.querySelectorAll(".point-row")];
+      rows.forEach((row, index) => {
+        const isFirst = index === 0;
+        const isLast = index === rows.length - 1;
+        row.querySelector(".point-label").textContent = isFirst ? "Start" : isLast ? "End" : `Via ${index}`;
+        // Start and End are the minimum required points - only via-points in between can be removed.
+        row.querySelector(".remove-point-btn").hidden = isFirst || isLast;
+      });
+      updateClickHint();
+    }
+
+    function addPointRow(value) {
+      const row = pointRow(value);
+      document.getElementById("points-list").appendChild(row);
+      relabelPoints();
+      return row;
+    }
+
+    document.getElementById("add-point-btn").addEventListener("click", () => addPointRow(""));
+    const startRow = addPointRow("");
+    addPointRow("");
+    setActiveInput(startRow.querySelector("input")); // default focus so the very first map click works without explicit setup
+
+    map.on("click", (event) => {
+      const value = `${event.lngLat.lat.toFixed(6)},${event.lngLat.lng.toFixed(6)}`;
+      const inputs = [...document.querySelectorAll(".point-row input")];
+      const target = activeInput || inputs.find((input) => !input.value.trim()) || inputs[inputs.length - 1];
+      if (!target) return;
+      target.value = value;
+
+      // Auto-advance to the next empty field, so consecutive clicks fill Start, then End, then vias in order.
+      const currentIndex = inputs.indexOf(target);
+      const nextEmpty = inputs.find((input, idx) => idx > currentIndex && !input.value.trim());
+      setActiveInput(nextEmpty || target);
+    });
+
+    // --- Network overlay -----------------------------------------------------
+    let currentNetworkGeojson = null;
+
+    function addNetworkLayer(geojson) {
+      const source = map.getSource("network-base");
+      if (source) {
+        source.setData(geojson);
+        return;
+      }
+      map.addSource("network-base", { type: "geojson", data: geojson });
+      map.addLayer({
+        id: "network-base",
+        type: "line",
+        source: "network-base",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#f59e0b", "line-width": 1, "line-opacity": 0.8 },
+      });
+    }
+
+    function removeNetworkLayer() {
+      if (map.getLayer("network-base")) map.removeLayer("network-base");
+      if (map.getSource("network-base")) map.removeSource("network-base");
+    }
+
+    async function loadNetworkOverlay(schema, { fit = true } = {}) {
+      currentNetworkGeojson = null;
+      removeNetworkLayer();
+      if (!schema) return;
+      try {
+        const result = await apiGet(`/networks/${encodeURIComponent(schema)}/geometry`);
+        currentNetworkGeojson = result.geojson;
+        addNetworkLayer(currentNetworkGeojson);
+        if (fit) fitToGeojson(currentNetworkGeojson);
+      } catch (error) {
+        console.error("Failed to load network geometry", error);
+      }
+    }
+
+    function loadNetworkOverlayWhenReady(schema) {
+      if (map.loaded()) {
+        loadNetworkOverlay(schema);
+      } else {
+        map.once("load", () => loadNetworkOverlay(schema));
+      }
+    }
+
+    async function loadNetworks() {
+      const select = document.getElementById("schema-select");
+      try {
+        const networks = await apiGet("/networks");
+        select.innerHTML = "";
+        if (!networks.length) {
+          select.innerHTML = '<option value="">No networks built yet</option>';
+          return;
+        }
+        for (const network of networks) {
+          const option = document.createElement("option");
+          option.value = network.schema;
+          option.textContent = `${network.schema} (${network.edge_count} edges)`;
+          select.appendChild(option);
+        }
+        const preselect = new URLSearchParams(window.location.search).get("schema");
+        if (preselect && networks.some((n) => n.schema === preselect)) {
+          select.value = preselect;
+        }
+        if (select.value) loadNetworkOverlayWhenReady(select.value);
+      } catch (error) {
+        select.innerHTML = `<option value="">Failed to load: ${error.message}</option>`;
+      }
+    }
+    loadNetworks();
+
+    document.getElementById("schema-select").addEventListener("change", (event) => {
+      currentRouteState = null;
+      clearMarkers();
+      ["route", "route-original", "route-corrected"].forEach(removeLineLayer);
+      document.getElementById("result-card").hidden = true;
+      loadNetworkOverlayWhenReady(event.target.value);
+    });
+
+    // --- Route rendering -----------------------------------------------------
+    let markers = [];
+    let currentRouteState = null;
+
+    function clearMarkers() {
+      markers.forEach((marker) => marker.remove());
+      markers = [];
+    }
+
+    function addMarker(lat, lon, color, label) {
+      const el = document.createElement("div");
+      el.style.width = "18px";
+      el.style.height = "18px";
+      el.style.borderRadius = "50%";
+      el.style.background = color;
+      el.style.border = "2px solid white";
+      el.style.boxShadow = "0 0 3px rgba(0,0,0,0.5)";
+      el.title = label;
+      markers.push(new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map));
+    }
+
+    function setLineLayer(id, geojson, paint, dashed) {
+      const source = map.getSource(id);
+      if (source) {
+        source.setData(geojson);
+      } else {
+        map.addSource(id, { type: "geojson", data: geojson });
+        map.addLayer({
+          id,
+          type: "line",
+          source: id,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: dashed ? { ...paint, "line-dasharray": [2, 2] } : paint,
+        });
+      }
+    }
+
+    function removeLineLayer(id) {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+    }
+
+    function fitToGeojson(geojson) {
+      const coords = [];
+      for (const feature of geojson.features || []) {
+        if (feature.geometry && feature.geometry.coordinates) {
+          for (const c of feature.geometry.coordinates) coords.push(c);
+        }
+      }
+      if (!coords.length) return;
+      const lons = coords.map((c) => c[0]);
+      const lats = coords.map((c) => c[1]);
+      map.fitBounds(
+        [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: 60, duration: 500 }
+      );
+    }
+
+    function renderRouteState(state) {
+      clearMarkers();
+      if (state.mode === "correct") {
+        setLineLayer("route-original", state.originalGeojson, { "line-color": "#9ca3af", "line-width": 4 }, true);
+        setLineLayer("route-corrected", state.correctedGeojson, { "line-color": "#2563eb", "line-width": 4 });
+      } else {
+        setLineLayer("route", state.geojson, { "line-color": "#2563eb", "line-width": 4 });
+      }
+      addMarker(state.points[0].lat, state.points[0].lon, "#2563eb", "Start");
+      addMarker(state.points[state.points.length - 1].lat, state.points[state.points.length - 1].lon, "#dc2626", "End");
+    }
+
+    document.getElementById("correct-checkbox").addEventListener("change", (event) => {
+      // /route/correct has no algorithm parameter (see CLAUDE.md - the biased-cost
+      // heuristic math for astar there isn't as clean as for a plain route, so it
+      // wasn't worth the added risk) - disable the selector rather than silently
+      // ignoring it while correction is on.
+      const algorithmSelect = document.getElementById("algorithm-select");
+      algorithmSelect.disabled = event.target.checked;
+      document.getElementById("algorithm-hint").hidden = !event.target.checked;
+    });
+
+    document.getElementById("route-btn").addEventListener("click", async () => {
+      const schema = document.getElementById("schema-select").value;
+      const points = [...document.querySelectorAll(".point-row input")]
+        .map((input) => input.value.trim())
+        .filter(Boolean);
+      const correct = document.getElementById("correct-checkbox").checked;
+      const algorithm = document.getElementById("algorithm-select").value;
+      const errorEl = document.getElementById("route-error");
+      const resultCard = document.getElementById("result-card");
+      errorEl.hidden = true;
+      resultCard.hidden = true;
+
+      if (!schema) {
+        errorEl.textContent = "Pick a schema.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (points.length < 2) {
+        errorEl.textContent = "Enter at least a start and an end point.";
+        errorEl.hidden = false;
+        return;
+      }
+
+      const btn = document.getElementById("route-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Calculating...';
+      try {
+        ["route", "route-original", "route-corrected"].forEach(removeLineLayer);
+
+        if (correct) {
+          const result = await apiPost("/route/correct", { schema, points, optimize: false });
+          currentRouteState = {
+            mode: "correct",
+            originalGeojson: result.original_route.geojson,
+            correctedGeojson: result.corrected_route.geojson,
+            points: result.original_route.points,
+          };
+          renderRouteState(currentRouteState);
+          fitToGeojson(result.original_route.geojson);
+
+          document.getElementById("route-legend").hidden = false;
+          document.getElementById("route-summary").innerHTML = `
+            <p><strong>Original:</strong> ${result.original_route.overview.total_distance_m.toFixed(0)} m,
+              ${result.original_route.overview.total_duration_min.toFixed(1)} min</p>
+            <p><strong>Corrected:</strong> ${result.corrected_route.overview.total_distance_m.toFixed(0)} m,
+              ${result.corrected_route.overview.total_duration_min.toFixed(1)} min</p>
+            <p><strong>Match vs. reference:</strong>
+              before ${result.match_before.overlap_percentage.toFixed(1)}% &rarr;
+              after ${result.match_after.overlap_percentage.toFixed(1)}%
+              (Hausdorff ${result.match_after.hausdorff_distance_m.toFixed(0)} m)</p>
+            <p class="hint">${result.edges_changed_count} edge(s) changed.</p>
+          `;
+        } else {
+          const result = await apiPost("/route", { schema, points, optimize: false, algorithm });
+          currentRouteState = { mode: "plain", geojson: result.geojson, points: result.points };
+          renderRouteState(currentRouteState);
+          fitToGeojson(result.geojson);
+
+          document.getElementById("route-legend").hidden = true;
+          document.getElementById("route-summary").innerHTML = `
+            <p><strong>${result.overview.total_distance_m.toFixed(0)} m</strong>,
+              ${result.overview.total_duration_min.toFixed(1)} min</p>
+            <p class="hint">Algorithm: ${result.overview.algorithm}</p>
+          `;
+        }
+        resultCard.hidden = false;
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Calculate route";
+      }
+    });
+  </script>
+</body>
+</html>
