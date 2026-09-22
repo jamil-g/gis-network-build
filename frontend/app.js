@@ -40,9 +40,21 @@ function arrayBufferToBase64(buffer) {
 
 async function apiRequest(path, options) {
   const response = await fetch(API_BASE + path, options);
-  const data = await response.json();
+  // Read as text first, not response.json() directly - an unhandled server
+  // exception (a raw 500) comes back as plain text ("Internal Server
+  // Error"), not JSON, and calling .json() on that throws its own unrelated
+  // parse error ("Unexpected token 'I' ... is not valid JSON") that hides
+  // what actually went wrong. Confirmed this directly, not assumed - a real
+  // DB error surfaced exactly this way before this fix.
+  const rawBody = await response.text();
+  let data;
+  try {
+    data = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    data = null;
+  }
   if (!response.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    const detail = data && typeof data.detail === "string" ? data.detail : data ? JSON.stringify(data.detail) : rawBody;
     throw new Error(detail || `Request failed (${response.status})`);
   }
   return data;

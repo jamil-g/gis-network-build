@@ -140,7 +140,7 @@ needed once we work with a real FGDB file.
   on `cnt = 1 OR cnt IS NULL` after `pgr_analyzeGraph`, not on empty source/target.
   We hit this in practice (the first test gave a false 100% connectivity before the fix).
 - **A pytest suite exists** in `python/tests/` (see `pytest.ini`),
-  131 tests. Some (marker `db`) require a real DB and run against a unique schema
+  137 tests. Some (marker `db`) require a real DB and run against a unique schema
   that's dropped automatically at the end (`scratch_schema` fixture in `conftest.py`) - they skip
   gracefully (don't fail) if no DB is available. The tests don't depend on `data/*.geojson`
   files (README notes that folder isn't committed to git) - every test builds the geometry
@@ -378,19 +378,49 @@ needed once we work with a real FGDB file.
     heuristic factor for it is a genuinely different, open-ended problem, not just a copy of
     the above. Not worth the added risk for a feature that's about matching a reference
     route, not search speed.
-- **Real ArcGIS Pro FGDB exports crashed every `/assess` call - found live testing against
-  one, not a synthetic guess.** `TypeError: _snap_key() takes 3 positional arguments but 4
-  were given`, from `topology_health.py`. Root cause: a real FGDB export commonly carries a
-  Z (elevation) value on **every vertex**, even for a plain 2D road layer, so
-  `geom.coords[i]` is `(x, y, z)` instead of `(x, y)` - `_snap_key(*coords[0], precision)`
-  unpacked to 4 positional args against a 3-arg function. Reproduced directly with a
-  synthetic 3D `LineString` before fixing it (not assumed to be the cause). Fixed at the
-  root, not just the crash site: `quick_assessment.run()` and `pipeline.run()` both call
-  `gdf.geometry.force_2d()` immediately after `gpd.read_file()`, so Z never reaches anything
-  downstream - not just `topology_health.py`, but also `pgr_createTopology` itself, which
-  would otherwise have to deal with two segments that *should* share a node differing
-  slightly in Z (a real, not hypothetical, way real-world elevation sampling could silently
-  produce false dangles). `compute_topology_health` also slices `coords[i][:2]` directly, as
-  a defense-in-depth backstop for any future caller that hasn't gone through `force_2d()`
-  first. Verified end-to-end on a real DB build: the stored geometry's `ST_NDims` is 2, not
-  3, confirming Z genuinely never reaches PostGIS.
+- **Two real ArcGIS Pro FGDB driver quirks, both found live testing against a real FGDB
+  (not synthetic guesses), both fixed once in a new shared `src/geometry_io.py` (the only
+  two `gpd.read_file()` call sites - `quick_assessment.run()` and `pipeline.run()` - both
+  now go through `read_gis_file()` instead of calling it directly):**
+  1. *Every `/assess` call crashed*: `TypeError: _snap_key() takes 3 positional arguments
+     but 4 were given`, from `topology_health.py`. A real FGDB export commonly carries a Z
+     (elevation) value on **every vertex**, even for a plain 2D road layer, so
+     `geom.coords[i]` is `(x, y, z)` instead of `(x, y)` - `_snap_key(*coords[0], precision)`
+     unpacked to 4 positional args against a 3-arg function. Reproduced directly with a
+     synthetic 3D `LineString` before fixing it. `read_gis_file()` strips Z via
+     `gdf.geometry.force_2d()` right after reading, so it never reaches anything
+     downstream - not just `topology_health.py`, but also `pgr_createTopology` itself, which
+     would otherwise have to deal with two segments that *should* share a node differing
+     slightly in Z (a real, not hypothetical, way real-world elevation sampling could
+     silently produce false dangles). `compute_topology_health` also slices
+     `coords[i][:2]` directly, as a defense-in-depth backstop for any caller that hasn't
+     gone through `read_gis_file()`. Verified end-to-end on a real DB build: the stored
+     geometry's `ST_NDims` is 2, not 3.
+  2. *Routing crashed on a built FGDB network, but only at routing time, not at build
+     time*: `psycopg2.errors.InternalError_: line_locate_point: 1st arg isn't a line`, from
+     inside `pgr_findCloseEdges` (`snap_points` in `snapping.py`). Root cause: GDAL's
+     FileGDB driver reads **every** "Polyline" feature as a `MultiLineString`, even a
+     single-part one - confirmed directly against the real failing schema: `SELECT
+     ST_GeometryType(geom) FROM edges` returned `ST_MultiLineString` for all 3,873 rows, not
+     `ST_LineString`. `pgr_createTopology`/`pgr_analyzeGraph` tolerated this silently (the
+     build itself "succeeded"), but `pgr_findCloseEdges`'s internal `ST_LineLocatePoint`
+     call requires a plain `LineString` and fails on `MultiLineString` - so the bug was
+     invisible until someone actually tried to route, which is exactly why it was missed
+     initially even after the Z-coordinate fix above. `read_gis_file()` now also runs
+     `gdf.explode(index_parts=False).reset_index(drop=True)` right after reading - `explode()`
+     alone leaves **duplicate index values** on a multi-part row (verified directly:
+     `[0, 1, 2, 2]` for a 3-feature input where feature 2 is 2-part), which
+     `build_topology.py`'s `to_postgis(index=True, index_label="id")` would otherwise turn
+     into duplicate edge ids, so the `reset_index` isn't optional. Verified end-to-end: built
+     a network from `MultiLineString` source data, confirmed the stored geometry is
+     `ST_LineString`, and confirmed the exact routing call that crashed (`pgr_findCloseEdges`
+     via `snap_points`) now succeeds.
+  - **Also fixed while investigating this**: the frontend's error handling called
+    `response.json()` unconditionally on a failed request - an unhandled server exception
+    (a raw 500) comes back as plain text (`"Internal Server Error"`), not JSON, and
+    `.json()` on that throws its own unrelated parse error (`"Unexpected token 'I' ...
+    is not valid JSON"`) that hides what actually went wrong. `apiRequest` (`app.js`) now
+    reads the body as text first and only parses it as JSON if that succeeds, falling back
+    to the raw text as the error message otherwise. Verified against simulated
+    success/JSON-error/non-JSON-error/empty-body responses (no JS test runner in this
+    project, so this was checked directly with node, not just assumed correct).

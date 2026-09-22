@@ -13,6 +13,7 @@ import geopandas as gpd
 
 from src.assessment.field_heuristics import FieldDetectionResult, detect_fields
 from src.assessment.topology_health import TopologyHealth, compute_topology_health
+from src.geometry_io import read_gis_file
 
 # Initial weights - tunable. The categories were agreed in advance:
 # connectivity / direction / speed / turn_restrictions. Must sum to 1.0.
@@ -60,11 +61,7 @@ def run(
     notes: list[str] = []
 
     if gdf is None:
-        gdf = gpd.read_file(input_path, layer=layer)
-        # Strip Z immediately - real FGDB exports (e.g. ArcGIS Pro) commonly carry
-        # elevation on every vertex even for a plain road layer, and this project's
-        # topology/routing logic is 2D throughout (see topology_health.py).
-        gdf["geometry"] = gdf.geometry.force_2d()
+        gdf = read_gis_file(input_path, layer=layer)
 
     if gdf.empty:
         return QuickAssessmentResult(

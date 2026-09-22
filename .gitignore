@@ -25,3 +25,6 @@ data/
 
 # draw.io lock/backup files
 design/.$*.bkp
+
+# ad-hoc debug screenshots dropped at the repo root during testing - not project content
+/img*.png

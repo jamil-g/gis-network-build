@@ -6,12 +6,11 @@ during processing (that's what the project is built to demonstrate).
 """
 from dataclasses import dataclass
 
-import geopandas as gpd
-
 from src.assessment.field_heuristics import detect_fields
 from src.assessment.quick_assessment import QuickAssessmentResult
 from src.assessment.quick_assessment import run as run_quick_assessment
 from src.db.connection import get_engine
+from src.geometry_io import read_gis_file
 from src.preprocess.attributes import complete_attributes
 from src.preprocess.readiness import ReadinessResult, compute_readiness
 from src.preprocess.topology import TopologyBuildResult, build_topology
@@ -29,13 +28,7 @@ class PreprocessResult:
 
 
 def run(input_path: str, output_schema: str, layer: str | None = None) -> PreprocessResult:
-    gdf = gpd.read_file(input_path, layer=layer)
-    # Strip Z immediately - real FGDB exports (e.g. ArcGIS Pro) commonly carry
-    # elevation on every vertex even for a plain road layer, and this project's
-    # topology/routing logic is 2D throughout. Fixing it here (once) rather than
-    # in topology.py means pgr_createTopology's own endpoint-matching never has
-    # to deal with two segments that should share a node differing slightly in Z.
-    gdf["geometry"] = gdf.geometry.force_2d()
+    gdf = read_gis_file(input_path, layer=layer)
     before = run_quick_assessment(input_path, layer=layer, gdf=gdf)
 
     field_detection = detect_fields(list(gdf.columns))

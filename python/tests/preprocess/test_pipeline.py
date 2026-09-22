@@ -11,10 +11,11 @@ pgr_analyzeGraph) - see CLAUDE.md, "Current infrastructure state".
 """
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiLineString
 from sqlalchemy import text
 
 from src.preprocess.pipeline import run
+from src.routing.route_query import run as run_route
 from tests.conftest import write_geojson
 
 
@@ -75,6 +76,39 @@ def test_pipeline_handles_3d_geometry_from_source(tmp_path, db_engine, scratch_s
     with db_engine.connect() as conn:
         ndims = conn.execute(text(f'SELECT ST_NDims(geom) FROM "{scratch_schema}"."edges" LIMIT 1')).scalar_one()
     assert ndims == 2  # not 3 - Z must not have reached the stored geometry
+
+
+@pytest.mark.db
+def test_pipeline_handles_multilinestring_source_and_can_route_on_it(tmp_path, db_engine, scratch_schema):
+    """
+    Regression test: found live testing a real ArcGIS Pro FGDB export -
+    routing on the built network raised "line_locate_point: 1st arg isn't
+    a line" from pgr_findCloseEdges, because every stored edge was
+    ST_MultiLineString, not ST_LineString. Root cause: GDAL's FileGDB
+    driver reads every "Polyline" feature as a MultiLineString, even a
+    single-part one (confirmed directly - every edge in a real build came
+    back multi-part). run() now explodes MultiLineString into individual
+    LineString rows immediately after reading (geometry_io.py), so this
+    reproduces the exact source shape that broke routing, then proves
+    routing actually works on the result - not just that the build
+    succeeds, since the crash only ever showed up at routing time.
+    """
+    lines = [
+        MultiLineString([[(0, 0), (1, 0)]]),  # single-part, wrapped - the common FGDB case
+        MultiLineString([[(1, 0), (2, 0)]]),
+    ]
+    gdf = gpd.GeoDataFrame({"geometry": lines}, crs="EPSG:4326")
+    input_path = write_geojson(tmp_path, gdf)
+
+    result = run(input_path, scratch_schema)
+    assert result.topology.edge_count == 2
+
+    with db_engine.connect() as conn:
+        geom_type = conn.execute(text(f'SELECT DISTINCT ST_GeometryType(geom) FROM "{scratch_schema}"."edges"')).scalar_one()
+    assert geom_type == "ST_LineString"
+
+    route_result = run_route(db_engine, scratch_schema, "edges", ["0,0.5", "0,1.5"])
+    assert route_result.overview.total_distance_m > 0
 
 
 @pytest.mark.db

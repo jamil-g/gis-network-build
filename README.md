@@ -184,6 +184,8 @@ gis-network-builder/
     src/
       config.py            # reads environment variables
       db/                  # single (singleton) connection + shared SQL-identifier validation
+      geometry_io.py       # reads a GIS file into a normalized 2D, single-part GeoDataFrame
+                           # (strips Z, explodes MultiLineString - real FGDB driver quirks, see CLAUDE.md)
       uploads.py            # decodes/extracts a browser upload, locates the GIS source, picks a layer
       assessment/          # quick assessment - implemented
       preprocess/          # the full process - implemented (topology/attributes/readiness/pipeline)
@@ -201,7 +203,7 @@ cd python
 python -m pytest
 ```
 
-131 tests. Some (marker `db`) require a real DB (`docker compose up -d db`) and run
+137 tests. Some (marker `db`) require a real DB (`docker compose up -d db`) and run
 against a unique schema that's dropped automatically at the end - they skip gracefully if no DB is available.
 
 ## What's left to build (in priority order)
