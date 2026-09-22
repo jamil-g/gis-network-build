@@ -140,7 +140,7 @@ needed once we work with a real FGDB file.
   on `cnt = 1 OR cnt IS NULL` after `pgr_analyzeGraph`, not on empty source/target.
   We hit this in practice (the first test gave a false 100% connectivity before the fix).
 - **A pytest suite exists** in `python/tests/` (see `pytest.ini`),
-  126 tests. Some (marker `db`) require a real DB and run against a unique schema
+  128 tests. Some (marker `db`) require a real DB and run against a unique schema
   that's dropped automatically at the end (`scratch_schema` fixture in `conftest.py`) - they skip
   gracefully (don't fail) if no DB is available. The tests don't depend on `data/*.geojson`
   files (README notes that folder isn't committed to git) - every test builds the geometry
@@ -290,6 +290,22 @@ needed once we work with a real FGDB file.
   alphabetical** - confirmed against a synthetic 3-layer GeoPackage. The temp dir is always
   cleaned up (`finally`, both success and failure paths) - see `_ResolvedInput` in
   `src/api/app.py`.
+  - **Real bug found during actual FGDB testing, not hypothetical**: a plain
+    `<input type="file">` can't select a `.gdb` *folder* directly (it's a directory, not a
+    file) - a browser's file picker just navigates into it, letting you pick loose files
+    from inside instead of the folder itself. The natural workaround (zip the `.gdb` folder
+    yourself first, e.g. Windows Explorer's "Compress to ZIP file", then select that `.zip`
+    in the wizard) silently failed with "no recognizable GIS data found" - because
+    `zipAndEncodeFiles` (`frontend/app.js`) always wraps whatever was selected in its own
+    zip, unconditionally, so the upload became a zip containing one file: the user's
+    already-zipped `.zip`. Reproduced end-to-end (not assumed) before fixing it two ways:
+    `decode_and_extract_upload` now auto-unwraps a lone nested zip (up to
+    `_MAX_NESTED_ZIP_UNWRAP` = 5 levels, defense in depth against any upload path, not just
+    this one), and `zipAndEncodeFiles` now sends an already-`.zip` single-file selection
+    as-is instead of re-zipping it (keeps the upload half the size for a large FGDB, and is
+    the more direct fix - the server-side unwrap is the safety net, not the primary fix).
+    True one-step `.gdb`-folder selection (via `webkitdirectory`) is still not built -
+    "zip it yourself first" remains the supported path, and now actually works.
 - **Two new endpoints so the map page can work without the user remembering a schema name
   or guessing coordinates blind:**
   - `GET /networks` - lists schemas that actually have a complete pgRouting network (both

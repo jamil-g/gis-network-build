@@ -22,6 +22,7 @@ import pyogrio
 
 _LINE_GEOMETRY_MARKER = "LineString"  # matches LineString, MultiLineString, and their 25D variants
 _SOURCE_PRIORITY = ("*.gdb", "*.gpkg", "*.shp", "*.geojson", "*.json")
+_MAX_NESTED_ZIP_UNWRAP = 5  # safety cap against an accidental/malicious zip-of-zips-of-zips
 
 
 class UploadError(Exception):
@@ -39,25 +40,53 @@ class LayerSelection:
 
 
 def decode_and_extract_upload(file_base64: str) -> Path:
-    """Base64-decodes a zip and extracts it into a fresh temp directory. Caller owns cleanup (shutil.rmtree)."""
+    """
+    Base64-decodes a zip and extracts it into a fresh temp directory. Caller
+    owns cleanup (shutil.rmtree).
+
+    Also unwraps a lone nested zip automatically, up to
+    _MAX_NESTED_ZIP_UNWRAP levels - a real case, not a hypothetical one: a
+    plain browser file input can't select a .gdb *folder* directly (it's a
+    directory, not a file), so a user commonly zips it themselves first
+    (e.g. Windows Explorer's "Compress to ZIP file") and selects that .zip
+    in the wizard. The client-side upload always wraps whatever was
+    selected in its own zip (frontend/app.js), so without this the
+    extracted tree would contain exactly one file - the user's own,
+    already-zipped .zip - and find_data_source() would correctly, but
+    unhelpfully, report "no recognizable GIS data found". Confirmed this
+    exact failure mode directly (reproduced end-to-end) before adding this,
+    not assumed.
+    """
     try:
         zip_bytes = base64.b64decode(file_base64, validate=True)
     except (binascii.Error, ValueError) as error:
         raise UploadError(f"Invalid base64 upload: {error}") from error
 
     extract_dir = Path(tempfile.mkdtemp(prefix="gnb_upload_"))
-    zip_path = extract_dir / "upload.zip"
-    zip_path.write_bytes(zip_bytes)
+    _extract_zip_bytes(zip_bytes, extract_dir)
 
+    for _ in range(_MAX_NESTED_ZIP_UNWRAP):
+        entries = list(extract_dir.iterdir())
+        if len(entries) != 1 or entries[0].suffix.lower() != ".zip":
+            break
+        nested_zip = entries[0]
+        nested_bytes = nested_zip.read_bytes()
+        nested_zip.unlink()
+        _extract_zip_bytes(nested_bytes, extract_dir)
+
+    return extract_dir
+
+
+def _extract_zip_bytes(zip_bytes: bytes, target_dir: Path) -> None:
+    zip_path = target_dir / "upload.zip"
+    zip_path.write_bytes(zip_bytes)
     try:
         with zipfile.ZipFile(zip_path) as archive:
-            _safe_extract(archive, extract_dir)
+            _safe_extract(archive, target_dir)
     except zipfile.BadZipFile as error:
         raise UploadError(f"Uploaded file isn't a valid zip: {error}") from error
     finally:
         zip_path.unlink(missing_ok=True)
-
-    return extract_dir
 
 
 def _safe_extract(archive: zipfile.ZipFile, target_dir: Path) -> None:

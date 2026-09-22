@@ -63,6 +63,37 @@ def test_decode_and_extract_upload_rejects_zip_slip():
         decode_and_extract_upload(encoded)
 
 
+def test_decode_and_extract_upload_unwraps_a_nested_zip(tmp_path):
+    """
+    Regression test: a plain <input type="file"> can't select a .gdb
+    *folder* directly, so a user commonly zips it themselves first (e.g.
+    Windows Explorer's "Compress to ZIP file") and selects that .zip in the
+    wizard. The client always wraps whatever was selected in its own zip
+    (frontend/app.js), so without unwrapping, the extracted tree would
+    contain exactly one file - the user's own already-zipped .zip - and
+    find_data_source() would report "no recognizable GIS data found"
+    even though the upload was perfectly valid. Reproduced this exact
+    failure directly before fixing it, not assumed.
+    """
+    inner_zip_content = _zip_bytes({"roads.gdb/gdb": b"fake gdb marker", "roads.gdb/a00000001.gdbtable": b"fake table"})
+    outer_zip_content = _zip_bytes({"roads.zip": inner_zip_content})
+    encoded = base64.b64encode(outer_zip_content).decode("ascii")
+
+    extracted_dir = decode_and_extract_upload(encoded)
+
+    assert find_data_source(extracted_dir).name == "roads.gdb"
+
+
+def test_decode_and_extract_upload_leaves_a_normal_multi_file_upload_alone(tmp_path):
+    """A zip with more than one top-level entry (the common case - a shapefile's sidecar files) must not be treated as nested."""
+    zip_content = _zip_bytes({"roads.shp": b"", "roads.dbf": b"", "roads.shx": b""})
+    encoded = base64.b64encode(zip_content).decode("ascii")
+
+    extracted_dir = decode_and_extract_upload(encoded)
+
+    assert {p.name for p in extracted_dir.iterdir()} == {"roads.shp", "roads.dbf", "roads.shx"}
+
+
 def test_find_data_source_prefers_gdb_over_others(tmp_path):
     (tmp_path / "roads.gdb").mkdir()
     (tmp_path / "roads.gpkg").write_bytes(b"")

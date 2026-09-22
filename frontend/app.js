@@ -3,6 +3,21 @@
 const API_BASE = "";
 
 async function zipAndEncodeFiles(fileList) {
+  // A plain <input type="file"> can't select a .gdb *folder* directly (it's
+  // a directory, not a file) - a common workaround is zipping it yourself
+  // first (e.g. Windows Explorer's "Compress to ZIP file") and selecting
+  // that .zip here instead. If that's exactly what was selected, send it
+  // as-is rather than wrapping it in a second zip layer - re-zipping an
+  // already-zipped file produced a real bug (confirmed directly): the
+  // server only unwraps one layer by default, so the actual GDB/shapefile
+  // content stayed hidden inside the untouched inner .zip and every upload
+  // failed with "no recognizable GIS data found". The server now also
+  // unwraps a lone nested zip defensively either way (src/uploads.py), but
+  // avoiding it here keeps the upload half the size for a large file.
+  if (fileList.length === 1 && fileList[0].name.toLowerCase().endsWith(".zip")) {
+    return arrayBufferToBase64(await fileList[0].arrayBuffer());
+  }
+
   const zip = new JSZip();
   for (const file of fileList) {
     zip.file(file.name, await file.arrayBuffer());
