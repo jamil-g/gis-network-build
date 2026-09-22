@@ -1,5 +1,7 @@
 # GIS Network Builder
 
+By [Jamil Garzuzi](https://github.com/jamil-g).
+
 A tool that automatically builds a navigation (routing) network from a raw GIS file - Shapefile, FGDB,
 GeoJSON, or GeoPackage - and computes a **routing-readiness score** for the network's quality, before and after
 processing. The finished network is loaded into pgRouting for route calculation, with a browser UI on top.
@@ -216,3 +218,7 @@ against a unique schema that's dropped automatically at the end - they skip grac
    without a turn-restriction relationship class; this specific piece is still unbuilt.
 3. Frontend polish deliberately deferred past this MVP: folder/`.gdb` upload via `webkitdirectory`,
    per-connected-component map highlighting (to make picking a reachable pair of points easier).
+
+## License
+
+MIT - see [LICENSE](LICENSE).
