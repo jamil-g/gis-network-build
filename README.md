@@ -83,7 +83,12 @@ no framework), served by the same FastAPI app:
 
 - **`index.html`** - the upload wizard: pick a file (or a Shapefile's sidecar files, or a whole `.gdb`
   folder, or a `.gpkg`) -> `Assess file` shows the readiness score and category breakdown -> `Build network`
-  runs the full pipeline and loads it into a named schema -> a link hands off to the map page.
+  runs the full pipeline and loads it into a named schema (auto-filled from the file name, editable) -> a
+  link hands off to the map page. Ticking "Update an existing network instead" swaps that field for a
+  dropdown of already-built schemas (`GET /networks`) - rebuilding under an existing name fully replaces
+  that schema's data (`to_postgis(if_exists="replace")` + an explicit `DROP ... CASCADE` on the vertices
+  table - verified empirically to leave nothing from the old data behind), so "update the network" is just
+  "build again with the same name," no separate update path needed.
 - **`map.html`** - a separate full-page map: pick any already-built schema (only schemas with a complete
   pgRouting network are ever listed - see `GET /networks` below), see the network itself drawn on the map,
   enter route points by typing `lat,lon`/an address or by clicking the map, add any number of via-points,

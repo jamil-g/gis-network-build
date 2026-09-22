@@ -42,6 +42,11 @@
         <div>
           <label for="schema-input">Schema name</label>
           <input type="text" id="schema-input" value="network" />
+          <select id="schema-picker" hidden></select>
+          <div class="checkbox-row">
+            <input type="checkbox" id="update-existing-checkbox" />
+            <label for="update-existing-checkbox" style="margin: 0;">Update an existing network instead</label>
+          </div>
         </div>
         <div style="flex: 0;">
           <button id="preprocess-btn">Build network</button>
@@ -150,8 +155,29 @@
       }
     });
 
+    document.getElementById("update-existing-checkbox").addEventListener("change", async (event) => {
+      const schemaInput = document.getElementById("schema-input");
+      const schemaPicker = document.getElementById("schema-picker");
+      schemaInput.hidden = event.target.checked;
+      schemaPicker.hidden = !event.target.checked;
+      if (!event.target.checked) return;
+
+      schemaPicker.innerHTML = '<option value="">Loading...</option>';
+      try {
+        const networks = await apiGet("/networks");
+        schemaPicker.innerHTML = networks.length
+          ? networks.map((n) => `<option value="${n.schema}">${n.schema} (${n.edge_count} edges)</option>`).join("")
+          : '<option value="">No existing networks found</option>';
+      } catch (error) {
+        schemaPicker.innerHTML = `<option value="">Failed to load: ${error.message}</option>`;
+      }
+    });
+
     document.getElementById("preprocess-btn").addEventListener("click", async () => {
-      const schema = document.getElementById("schema-input").value.trim();
+      const updatingExisting = document.getElementById("update-existing-checkbox").checked;
+      const schema = updatingExisting
+        ? document.getElementById("schema-picker").value
+        : document.getElementById("schema-input").value.trim();
       const errorEl = document.getElementById("preprocess-error");
       const resultEl = document.getElementById("preprocess-result");
       errorEl.hidden = true;
@@ -163,7 +189,7 @@
         return;
       }
       if (!schema) {
-        errorEl.textContent = "Enter a schema name.";
+        errorEl.textContent = updatingExisting ? "Pick an existing network to update." : "Enter a schema name.";
         errorEl.hidden = false;
         return;
       }
