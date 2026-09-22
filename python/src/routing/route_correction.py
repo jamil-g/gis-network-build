@@ -47,6 +47,7 @@ from src.routing.snapping import snap_points
 
 DEFAULT_REFERENCE_PENALTY_PER_METER = 0.05  # minutes of cost added per meter an edge sits from the reference
 DEFAULT_MATCH_BUFFER_M = 15.0  # how close (m) counts as "matching" the reference, for overlap_percentage
+_OVERLAP_GRID_SIZE_M = 0.01  # 1cm - GEOS's fixed-precision overlay grid, in the network's metric CRS units (see compare_geometries)
 
 
 @dataclass
@@ -88,21 +89,33 @@ def compare_geometries(
     Hausdorff distance + buffer-overlap between our route and a reference
     route, both projected into the network's own CRS.
 
-    overlap_percentage is computed by point-sampling (densify our route,
-    check what fraction of the sample points fall within buffer_m of the
-    reference), not ST_Intersection(line, ST_Buffer(...)) - verified that
-    approach hits a real GEOS degeneracy for perfectly straight two-point
-    LineStrings (returns LINESTRING EMPTY / 0 length even when
-    ST_Contains/ST_Intersects correctly report true) - reproduced directly,
-    including with plain WKT and no transform involved at all, so it's a
-    genuine engine limitation, not a parameter-binding or precision issue.
-    Harmless on real, multi-vertex street geometry (never hit in the Athens
-    testing), but a real synthetic-test/edge-case risk worth avoiding
-    generally rather than working around per-caller.
+    overlap_percentage is the length of our route that falls within
+    buffer_m of the reference, as a fraction of our route's total length -
+    computed with the 3-argument ST_Intersection(geom1, geom2, gridSize),
+    not the plain 2-argument form. The 2-argument form hits a real GEOS
+    degeneracy for a perfectly straight two-point LineString intersected
+    with the buffer of an independently-recomputed copy of itself -
+    returns LINESTRING EMPTY (0 length) even though ST_Contains/
+    ST_Intersects correctly report true. Reproduced directly (plain WKT,
+    no transform; confirmed again at real UTM-scale coordinates, so it's
+    not a coordinate-magnitude/precision issue either) - a genuine
+    limitation of the legacy overlay path specifically, not overlay in
+    general. The 3-argument form routes through GEOS's newer,
+    fixed-precision overlay engine (OverlayNG) and doesn't hit it -
+    verified across gridSize 0.001-1.0m at both toy and real UTM
+    coordinates; also verified this handles an empty route geometry
+    (0/0 - guarded below) and a genuine partial overlap correctly (not
+    just the 0%/100% cases the bug itself involves). _OVERLAP_GRID_SIZE_M
+    (1cm) is more than precise enough for street-level routing.
+
+    An earlier version of this function avoided the same bug via
+    point-sampling (ST_Segmentize + ST_DumpPoints) instead - functionally
+    equivalent, but this is the more direct fix now that the actual cause
+    (the legacy overlay engine specifically) is understood, not just
+    worked around.
     """
     our_geometry = _merge_route_geometry(our_geojson)
     reference_geometry = _merge_route_geometry(reference_geojson)
-    sample_spacing_m = max(buffer_m / 3.0, 1.0)
 
     with engine.connect() as conn:
         srid = conn.execute(text(f'SELECT ST_SRID(geom) FROM "{schema}"."{table}" LIMIT 1')).scalar_one()
@@ -114,15 +127,15 @@ def compare_geometries(
                 ),
                 reference AS (
                   SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(:reference), 4326), :srid) AS geom
-                ),
-                sample_points AS (
-                  SELECT (ST_DumpPoints(ST_Segmentize(ours.geom, :spacing))).geom AS pt FROM ours
                 )
                 SELECT
                   ST_HausdorffDistance((SELECT geom FROM ours), (SELECT geom FROM reference)) AS hausdorff_m,
-                  count(*) AS total_points,
-                  count(*) FILTER (WHERE ST_Distance(sample_points.pt, (SELECT geom FROM reference)) <= :buffer_m) AS matched_points
-                FROM sample_points
+                  ST_Length((SELECT geom FROM ours)) AS our_length,
+                  ST_Length(ST_Intersection(
+                    (SELECT geom FROM ours),
+                    ST_Buffer((SELECT geom FROM reference), :buffer_m),
+                    :grid_size
+                  )) AS matched_length
                 """
             ),
             {
@@ -130,11 +143,11 @@ def compare_geometries(
                 "reference": json.dumps(reference_geometry),
                 "srid": srid,
                 "buffer_m": buffer_m,
-                "spacing": sample_spacing_m,
+                "grid_size": _OVERLAP_GRID_SIZE_M,
             },
         ).fetchone()
 
-    overlap_percentage = 100.0 * row.matched_points / row.total_points if row.total_points else 0.0
+    overlap_percentage = 100.0 * row.matched_length / row.our_length if row.our_length else 0.0
     return RouteMatchScore(hausdorff_distance_m=row.hausdorff_m, overlap_percentage=overlap_percentage)
 
 

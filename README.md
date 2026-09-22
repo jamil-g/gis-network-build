@@ -196,7 +196,7 @@ cd python
 python -m pytest
 ```
 
-125 tests. Some (marker `db`) require a real DB (`docker compose up -d db`) and run
+126 tests. Some (marker `db`) require a real DB (`docker compose up -d db`) and run
 against a unique schema that's dropped automatically at the end - they skip gracefully if no DB is available.
 
 ## What's left to build (in priority order)

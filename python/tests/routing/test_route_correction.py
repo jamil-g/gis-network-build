@@ -170,11 +170,15 @@ def test_compare_geometries_handles_straight_two_point_lines(two_path_network, d
     """
     Regression test: a perfectly straight 2-point LineString intersected
     with the buffer of an independently-recomputed copy of itself hits a
-    real GEOS degeneracy - ST_Intersection returns LINESTRING EMPTY (0
-    length) even though ST_Contains/ST_Intersects correctly report true.
-    Reproduced directly with plain WKT, no transform involved - a genuine
-    engine limitation, not a parameter-binding issue. compare_geometries
-    uses point-sampling specifically to avoid it; this pins that behavior.
+    real GEOS degeneracy - the plain 2-argument ST_Intersection returns
+    LINESTRING EMPTY (0 length) even though ST_Contains/ST_Intersects
+    correctly report true. Reproduced directly with plain WKT, no
+    transform, and again at real UTM-scale coordinates - a genuine
+    limitation of the legacy overlay path, not a parameter-binding or
+    coordinate-magnitude issue. compare_geometries uses the 3-argument
+    ST_Intersection(geom1, geom2, gridSize) form specifically to avoid it
+    (routes through GEOS's newer, fixed-precision OverlayNG engine
+    instead) - this pins that behavior.
     """
     geojson = {
         "type": "FeatureCollection",
@@ -185,3 +189,27 @@ def test_compare_geometries_handles_straight_two_point_lines(two_path_network, d
 
     assert score.hausdorff_distance_m == pytest.approx(0.0, abs=1e-6)
     assert score.overlap_percentage == pytest.approx(100.0, abs=0.1)
+
+
+@pytest.mark.db
+def test_compare_geometries_reports_a_genuine_partial_overlap(two_path_network, db_engine):
+    """
+    The straight-line regression test above only exercises the 0%/100%
+    cases the GEOS bug itself involves - this pins that the gridSize-based
+    ST_Intersection is actually computing a real partial-overlap length,
+    not just happening to return 100% for identical/near-identical inputs.
+    A 2-unit-long route where only the first half sits near the reference
+    should score well under 100% (and well above 0%).
+    """
+    our_geojson = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[0, 0], [2, 0]]}, "properties": {}}],
+    }
+    reference_geojson = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 0]]}, "properties": {}}],
+    }
+
+    score = compare_geometries(db_engine, two_path_network, "edges", our_geojson, reference_geojson, buffer_m=1.0)
+
+    assert 20.0 < score.overlap_percentage < 80.0

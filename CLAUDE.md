@@ -140,7 +140,7 @@ needed once we work with a real FGDB file.
   on `cnt = 1 OR cnt IS NULL` after `pgr_analyzeGraph`, not on empty source/target.
   We hit this in practice (the first test gave a false 100% connectivity before the fix).
 - **A pytest suite exists** in `python/tests/` (see `pytest.ini`),
-  125 tests. Some (marker `db`) require a real DB and run against a unique schema
+  126 tests. Some (marker `db`) require a real DB and run against a unique schema
   that's dropped automatically at the end (`scratch_schema` fixture in `conftest.py`) - they skip
   gracefully (don't fail) if no DB is available. The tests don't depend on `data/*.geojson`
   files (README notes that folder isn't committed to git) - every test builds the geometry
@@ -233,18 +233,39 @@ needed once we work with a real FGDB file.
     `length_m`/`cost` (scaled by the split fraction, same as `route_query.py` already does for
     distance) - the biased cost is used *only* to pick the path, never to report it. Regression
     test: `test_correct_route_reports_real_unbiased_duration_not_the_penalty`.
-  - **A genuine GEOS bug found and worked around**: `compare_geometries`'s original
-    `ST_Intersection(line, ST_Buffer(reference, buffer_m))` approach returns `LINESTRING EMPTY`
-    (0 length) for a perfectly straight 2-point LineString intersected with the buffer of an
+  - **A genuine GEOS bug, found, root-caused, and then actually fixed (not just worked
+    around)**: `compare_geometries`'s original `ST_Intersection(line, ST_Buffer(reference,
+    buffer_m))` - the plain 2-argument form - returns `LINESTRING EMPTY` (0 length) for a
+    perfectly straight 2-point LineString intersected with the buffer of an
     independently-recomputed copy of itself - even though `ST_Contains`/`ST_Intersects`
     correctly report `true` for the same geometries. Reproduced with plain WKT, no transform
-    involved at all (`PostGIS 3.5.2`) - a real engine limitation, not a parameter-binding or
-    precision issue (confirmed: a *bent*, 3+ point line works correctly). Never hit on real,
-    multi-vertex street geometry, but a real risk for any straight-edge synthetic network (which
-    is most of this project's own test fixtures). Fixed by computing `overlap_percentage` via
-    point-sampling (`ST_Segmentize` + `ST_DumpPoints`, checking `ST_Distance <= buffer_m` per
-    sample point) instead of `ST_Intersection` - avoids the degeneracy entirely, same technique
-    already used successfully earlier for manual per-vertex divergence analysis.
+    involved at all (`PostGIS 3.5.2`, `GEOS 3.9.0`) - a real engine limitation, not a
+    parameter-binding or precision issue (confirmed: a *bent*, 3+ point line works correctly;
+    also confirmed an explicit matching SRID on both geometries does **not** fix it, ruling out
+    CRS/precision as the cause). Never hit on real, multi-vertex street geometry, but a real
+    risk for any straight-edge synthetic network (which is most of this project's own test
+    fixtures).
+    - *First fix (superseded)*: computed `overlap_percentage` via point-sampling
+      (`ST_Segmentize` + `ST_DumpPoints`, checking `ST_Distance <= buffer_m` per sample point)
+      instead of `ST_Intersection` - avoided the degeneracy entirely, but is a workaround
+      around the symptom, not a fix of the cause.
+    - *Root cause, found afterward*: the 2-argument `ST_Intersection` here goes through GEOS's
+      legacy floating-point overlay path, which this exact case is degenerate for. PostGIS
+      also exposes a **3-argument form**, `ST_Intersection(geom1, geom2, gridSize)`, which
+      routes through GEOS's newer, fixed-precision overlay engine (OverlayNG) instead - and
+      does **not** hit the bug. Verified directly: the 3-argument form returns the correct,
+      non-empty result across a range of `gridSize` values (0.001m-1.0m), at both toy-scale and
+      real UTM-scale coordinates, on the exact reproduction case above.
+    - `compare_geometries` now uses `ST_Intersection(ours, ST_Buffer(reference, buffer_m),
+      _OVERLAP_GRID_SIZE_M)` directly (`_OVERLAP_GRID_SIZE_M = 0.01`, 1cm - more than precise
+      enough for street-level routing) - `overlap_percentage` is the intersection's length as a
+      fraction of the route's own length, not a point-sampling density estimate. Verified this
+      also handles an empty route geometry correctly (0/0, guarded in Python) and reports a
+      genuine *partial* overlap correctly, not just the 0%/100% cases the bug itself involves
+      (`test_compare_geometries_reports_a_genuine_partial_overlap`) - and re-confirmed on real
+      Athens data that route distances/`edges_changed_count` are unaffected (only the overlap
+      metric's computation changed) and the before/after match percentage still correctly shows
+      improvement after correction.
   - **A real, silent-failure-prone OSRM footgun, confirmed directly**: the official
     `router.project-osrm.org` public demo only ever runs a driving profile, but does **not**
     error on a mismatched profile in the URL - it silently returns a normal-looking `"Ok"`
