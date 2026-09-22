@@ -12,6 +12,7 @@ pgr_analyzeGraph) - see CLAUDE.md, "Current infrastructure state".
 import geopandas as gpd
 import pytest
 from shapely.geometry import LineString
+from sqlalchemy import text
 
 from src.preprocess.pipeline import run
 from tests.conftest import write_geojson
@@ -49,6 +50,31 @@ def test_pipeline_end_to_end_on_grid_with_isolated_segments(tmp_path, db_engine,
     assert result.before.category_scores["direction"] == 0.0
     assert result.after.category_scores["direction"] == 0.0
     assert result.after.notes  # there are notes about what was completed heuristically
+
+
+@pytest.mark.db
+def test_pipeline_handles_3d_geometry_from_source(tmp_path, db_engine, scratch_schema):
+    """
+    Regression test: a real ArcGIS Pro FGDB export carries a Z (elevation)
+    value on every vertex even for a plain road layer - found live testing
+    against one. run() strips it immediately after reading (before either
+    the before-score or pgr_createTopology ever see it), so the network
+    loads into PostGIS as plain 2D geometry - not just avoiding the crash,
+    but avoiding pgr_createTopology's own endpoint-matching having to deal
+    with two segments that should share a node differing slightly in Z.
+    """
+    lines = [LineString([(0, 0, 10), (1, 0, 12)]), LineString([(1, 0, 12), (2, 0, 9)])]
+    gdf = gpd.GeoDataFrame({"geometry": lines}, crs="EPSG:4326")
+    input_path = write_geojson(tmp_path, gdf)
+
+    result = run(input_path, scratch_schema)
+
+    assert result.topology.edge_count == 2
+    assert result.topology.node_count == 3
+
+    with db_engine.connect() as conn:
+        ndims = conn.execute(text(f'SELECT ST_NDims(geom) FROM "{scratch_schema}"."edges" LIMIT 1')).scalar_one()
+    assert ndims == 2  # not 3 - Z must not have reached the stored geometry
 
 
 @pytest.mark.db

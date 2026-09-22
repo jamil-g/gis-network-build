@@ -140,7 +140,7 @@ needed once we work with a real FGDB file.
   on `cnt = 1 OR cnt IS NULL` after `pgr_analyzeGraph`, not on empty source/target.
   We hit this in practice (the first test gave a false 100% connectivity before the fix).
 - **A pytest suite exists** in `python/tests/` (see `pytest.ini`),
-  128 tests. Some (marker `db`) require a real DB and run against a unique schema
+  131 tests. Some (marker `db`) require a real DB and run against a unique schema
   that's dropped automatically at the end (`scratch_schema` fixture in `conftest.py`) - they skip
   gracefully (don't fail) if no DB is available. The tests don't depend on `data/*.geojson`
   files (README notes that folder isn't committed to git) - every test builds the geometry
@@ -378,3 +378,19 @@ needed once we work with a real FGDB file.
     heuristic factor for it is a genuinely different, open-ended problem, not just a copy of
     the above. Not worth the added risk for a feature that's about matching a reference
     route, not search speed.
+- **Real ArcGIS Pro FGDB exports crashed every `/assess` call - found live testing against
+  one, not a synthetic guess.** `TypeError: _snap_key() takes 3 positional arguments but 4
+  were given`, from `topology_health.py`. Root cause: a real FGDB export commonly carries a
+  Z (elevation) value on **every vertex**, even for a plain 2D road layer, so
+  `geom.coords[i]` is `(x, y, z)` instead of `(x, y)` - `_snap_key(*coords[0], precision)`
+  unpacked to 4 positional args against a 3-arg function. Reproduced directly with a
+  synthetic 3D `LineString` before fixing it (not assumed to be the cause). Fixed at the
+  root, not just the crash site: `quick_assessment.run()` and `pipeline.run()` both call
+  `gdf.geometry.force_2d()` immediately after `gpd.read_file()`, so Z never reaches anything
+  downstream - not just `topology_health.py`, but also `pgr_createTopology` itself, which
+  would otherwise have to deal with two segments that *should* share a node differing
+  slightly in Z (a real, not hypothetical, way real-world elevation sampling could silently
+  produce false dangles). `compute_topology_health` also slices `coords[i][:2]` directly, as
+  a defense-in-depth backstop for any future caller that hasn't gone through `force_2d()`
+  first. Verified end-to-end on a real DB build: the stored geometry's `ST_NDims` is 2, not
+  3, confirming Z genuinely never reaches PostGIS.

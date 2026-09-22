@@ -53,6 +53,29 @@ def test_non_linestring_geometry_excluded_from_line_count():
     assert health.invalid_geometry_count == 0
 
 
+def test_handles_3d_linestrings_without_crashing():
+    """
+    Regression test: found live testing a real ArcGIS Pro FGDB export, which
+    carries a Z (elevation) value on every vertex even for a plain road
+    layer - coords[i] is then (x, y, z), not (x, y). _snap_key(*coords[0],
+    precision) unpacked to 4 positional args against a 3-arg function and
+    crashed with a TypeError, on every single /assess call for that file.
+    Reproduced directly before fixing it (a 3D LineString, not a synthetic
+    guess at what ArcGIS exports).
+    """
+    lines = [
+        LineString([(0, 0, 10), (1, 0, 12)]),
+        LineString([(1, 0, 12), (2, 0, 9)]),
+    ]
+    gdf = gpd.GeoDataFrame({"geometry": lines}, crs="EPSG:4326")
+    assert gdf.geometry.has_z.all()
+
+    health = compute_topology_health(gdf)
+
+    assert health.line_count == 2
+    assert health.dangle_count == 2  # the two open ends; (1,0) is shared, not a dangle
+
+
 def test_empty_geodataframe_reports_full_connectivity_by_convention():
     """
     Documented behavior (not a bug): no endpoints => dangle_ratio=0.0 =>

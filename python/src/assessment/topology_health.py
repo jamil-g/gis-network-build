@@ -63,8 +63,14 @@ def compute_topology_health(gdf: gpd.GeoDataFrame, snap_precision: int = 6) -> T
 
         line_count += 1
         coords = list(geom.coords)
-        start_key = _snap_key(*coords[0], snap_precision)
-        end_key = _snap_key(*coords[-1], snap_precision)
+        # coords[i] is (x, y) for 2D input but (x, y, z) for 3D - real FGDB
+        # exports (e.g. ArcGIS Pro) commonly carry elevation on every vertex
+        # even for a plain road layer. Endpoint-matching here is 2D only
+        # (quick_assessment.py/pipeline.py already strip Z before this runs
+        # in practice - this [:2] is the defense-in-depth backstop for any
+        # other caller that hasn't).
+        start_key = _snap_key(*coords[0][:2], snap_precision)
+        end_key = _snap_key(*coords[-1][:2], snap_precision)
         endpoint_counter[start_key] += 1
         endpoint_counter[end_key] += 1
 

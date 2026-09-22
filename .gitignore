@@ -13,6 +13,9 @@ venv/
 .idea/
 .vscode/
 
+# Claude Code local session/tooling state - not part of the project
+.claude/
+
 # OS cruft
 .DS_Store
 Thumbs.db

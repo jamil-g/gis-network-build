@@ -61,6 +61,10 @@ def run(
 
     if gdf is None:
         gdf = gpd.read_file(input_path, layer=layer)
+        # Strip Z immediately - real FGDB exports (e.g. ArcGIS Pro) commonly carry
+        # elevation on every vertex even for a plain road layer, and this project's
+        # topology/routing logic is 2D throughout (see topology_health.py).
+        gdf["geometry"] = gdf.geometry.force_2d()
 
     if gdf.empty:
         return QuickAssessmentResult(
