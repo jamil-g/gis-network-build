@@ -211,6 +211,8 @@ against a unique schema that's dropped automatically at the end - they skip grac
 1. The network management endpoints (create/update/delete/list), the `meta.networks` registry,
    24h staging, and read/write DB role separation - all per `architecture.drawio`, not yet built.
 2. Handling turn_restrictions that live in a separate table/relationship class (FGDB) -
-   known limitation, requires a real FGDB file to test against.
+   known limitation. Real FGDB files have since been tested against (two real driver-quirk
+   bugs found and fixed - 3D geometry, MultiLineString - see `CLAUDE.md`), but always ones
+   without a turn-restriction relationship class; this specific piece is still unbuilt.
 3. Frontend polish deliberately deferred past this MVP: folder/`.gdb` upload via `webkitdirectory`,
    per-connected-component map highlighting (to make picking a reachable pair of points easier).
