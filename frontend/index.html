@@ -15,7 +15,9 @@
   <main>
     <div class="card">
       <h2>1. Upload a GIS file</h2>
-      <p class="hint">GeoJSON, Shapefile (select all sidecar files), File Geodatabase (.gdb folder), or GeoPackage.
+      <p class="hint">GeoJSON can be uploaded directly. Shapefile, File Geodatabase (.gdb), and GeoPackage should be
+        added as a zip file (a browser can't select a folder or a multi-file set directly - zip it first, e.g.
+        Windows Explorer's "Compress to ZIP file", then select that .zip here).
         If the file has multiple layers, the first polyline layer is used automatically - you'll be told which one.</p>
       <input type="file" id="file-input" multiple />
       <div style="margin-top: 12px;">
