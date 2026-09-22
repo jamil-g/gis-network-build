@@ -1,16 +1,22 @@
 <mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.1.2 Chrome/138.0.7204.243 Electron/37.4.0 Safari/537.36" version="28.1.2">
   <diagram name="GIS Network Builder - Architecture" id="arch1">
-    <mxGraphModel dx="1678" dy="989" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1150" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="1678" dy="989" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1560" pageHeight="1150" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-7" value="&lt;font&gt;&lt;b&gt;REST API&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=16;dashed=1;dashPattern=1 4;" vertex="1" parent="1">
-          <mxGeometry x="283" y="620" width="337" height="410" as="geometry" />
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-7" value="&lt;font&gt;&lt;b&gt;REST API&lt;/b&gt; (FastAPI, Swagger at /docs)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=16;dashed=1;dashPattern=1 4;" vertex="1" parent="1">
+          <mxGeometry x="283" y="620" width="337" height="430" as="geometry" />
         </mxCell>
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-26" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="306" y="880" width="300" height="100" as="geometry" />
+          <mxGeometry x="306" y="880" width="300" height="160" as="geometry" />
         </mxCell>
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.55;exitY=1.001;exitDx=0;exitDy=0;exitPerimeter=0;strokeWidth=2;startArrow=classic;startFill=1;" edge="1" parent="1" source="bgLocal" target="FFpNQ0hJtDQw6bVMsCXk-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="browserFrontend" value="Browser&#xa;frontend/index.html (upload wizard) + map.html (route map)&#xa;plain HTML/JS + MapLibre GL JS, no build step" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;gradientColor=#7ea6e0;" parent="1" vertex="1">
+          <mxGeometry x="860" y="40" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="browserToApi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;" edge="1" parent="1" source="browserFrontend" target="FFpNQ0hJtDQw6bVMsCXk-7">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="bgLocal" value="Local - Python + CLI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;align=center;spacingLeft=10;spacingTop=10;fontSize=16;fontStyle=1;dashed=1;" parent="1" vertex="1">
@@ -19,8 +25,17 @@
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-2" value="&lt;span style=&quot;color: rgb(237, 237, 237); font-size: 13px;&quot;&gt;preprocess (full)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#008a00;fontColor=#ffffff;strokeColor=#005700;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="700" y="130" width="80" height="350" as="geometry" />
         </mxCell>
-        <mxCell id="bgDocker" value="Docker - DB Container" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;align=center;spacingLeft=10;spacingTop=10;fontSize=16;fontStyle=1;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="860" y="161" width="280" height="380" as="geometry" />
+        <mxCell id="bgDocker" value="docker-compose.yml - 2 containers" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;align=center;spacingLeft=10;spacingTop=10;fontSize=16;fontStyle=1;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="860" y="161" width="580" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="appContainer" value="App Container&#xa;python/Dockerfile&#xa;FastAPI (REST API above) + frontend static files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
+          <mxGeometry x="1160" y="210" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="appToDb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontColor=#000000;" parent="1" source="appContainer" target="db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="apiToAppContainer" value="runs inside" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;fontSize=12;" edge="1" parent="1" source="FFpNQ0hJtDQw6bVMsCXk-7" target="appContainer">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cli" target="quickScan">
           <mxGeometry relative="1" as="geometry">
@@ -48,7 +63,7 @@
         <mxCell id="attrs" value="Infer missing attributes&#xa;direction / speed / turn restrictions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#008a00;strokeColor=#005700;fontSize=13;fontColor=#ffffff;" parent="1" vertex="1">
           <mxGeometry x="430" y="250" width="260" height="55" as="geometry" />
         </mxCell>
-        <mxCell id="confidence" value="Confidence engine&#xa;weighted score + category breakdown" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#008a00;strokeColor=#005700;fontSize=13;fontColor=#ffffff;" parent="1" vertex="1">
+        <mxCell id="confidence" value="Readiness engine&#xa;weighted routing-readiness score + category breakdown" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#008a00;strokeColor=#005700;fontSize=13;fontColor=#ffffff;" parent="1" vertex="1">
           <mxGeometry x="430" y="350" width="260" height="55" as="geometry" />
         </mxCell>
         <mxCell id="load" value="Load into pgRouting schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#008a00;strokeColor=#005700;fontSize=13;fontColor=#ffffff;" parent="1" vertex="1">
@@ -57,10 +72,10 @@
         <mxCell id="db" value="Postgres + PostGIS + pgRouting&#xa;(container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
           <mxGeometry x="890" y="210" width="220" height="55" as="geometry" />
         </mxCell>
-        <mxCell id="routing" value="Routing queries&#xa;pgr_dijkstra etc." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
+        <mxCell id="routing" value="Routing queries&#xa;Dijkstra or A* + TSP optimize" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
           <mxGeometry x="890" y="300" width="220" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="external" value="Future: integration with&#xa;external service (conflation)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
+        <mxCell id="external" value="Route correction vs OSRM&#xa;cost-bias real edges, re-run Dijkstra&#xa;(never borrows reference geometry)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;fontSize=13;fontColor=#000000;" parent="1" vertex="1">
           <mxGeometry x="890" y="390" width="220" height="55" as="geometry" />
         </mxCell>
         <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontColor=light-dark(#FFFFFF,#000000);" parent="1" source="quickScan" target="quickScore" edge="1">
@@ -78,7 +93,7 @@
         <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontColor=#000000;" parent="1" source="db" target="routing" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontColor=#000000;" parent="1" source="routing" target="external" edge="1">
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontColor=#000000;" parent="1" source="routing" target="external" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-3" value="&lt;span style=&quot;font-size: 13px;&quot;&gt;assess (quick)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=light-dark(#FFFFFF,#FFFFFF);strokeColor=#006EAF;fontStyle=1" vertex="1" parent="1">
@@ -87,31 +102,34 @@
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=3;" edge="1" parent="1" source="FFpNQ0hJtDQw6bVMsCXk-26" target="bgDocker">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-27" value="Read Only" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=14;" vertex="1" connectable="0" parent="FFpNQ0hJtDQw6bVMsCXk-10">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-27" value="Read Only (planned - not built,&#xa;all endpoints use one role today)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=14;" vertex="1" connectable="0" parent="FFpNQ0hJtDQw6bVMsCXk-10">
           <mxGeometry x="-0.6403" y="4" relative="1" as="geometry">
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-8" value="&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;Route Query&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;with route opti&lt;span style=&quot;background-color: transparent;&quot;&gt;mize option&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fa6800;strokeColor=#C73500;fontColor=#000000;fontSize=13;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-8" value="POST /route&#xa;Dijkstra or A*, optimize" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fa6800;strokeColor=#C73500;fontColor=#000000;fontSize=13;" vertex="1" parent="1">
           <mxGeometry x="316" y="900" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-9" value="&lt;font style=&quot;color: light-dark(rgb(255, 255, 255), rgb(255, 255, 255));&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;Quick scan&lt;/span&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;fields + topology health&lt;/span&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006EAF;fontStyle=0" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-9" value="POST /assess&#xa;file path or browser upload" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006EAF;fontStyle=0" vertex="1" parent="1">
           <mxGeometry x="316" y="800" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-11" value="Route Query&lt;div&gt;&amp;nbsp;match external service&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fa6800;strokeColor=#C73500;fontColor=#000000;fontSize=13;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-11" value="POST /route/correct&#xa;vs OSRM reference" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fa6800;strokeColor=#C73500;fontColor=#000000;fontSize=13;" vertex="1" parent="1">
           <mxGeometry x="476" y="900" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-17" value="Create a new Network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-17" value="POST /preprocess&#xa;(create a network)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
           <mxGeometry x="316" y="660" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-18" value="Update exists Network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-18" value="POST /preprocess&#xa;(update - same schema name = full replace)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
           <mxGeometry x="456" y="660" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-19" value="Delete exists Network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-19" value="Delete an existing network&#xa;(not built)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;fontSize=14;" vertex="1" parent="1">
           <mxGeometry x="316" y="730" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-20" value="List all exists Network info" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-20" value="GET /networks&#xa;(list valid, ready-to-route networks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
           <mxGeometry x="456" y="730" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-40" value="GET /networks/{schema}/geometry&#xa;(map page's network overlay)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="316" y="970" width="260" height="60" as="geometry" />
         </mxCell>
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.011;entryY=0.366;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;strokeWidth=2;" edge="1" parent="1" source="bgLocal" target="bgDocker">
           <mxGeometry relative="1" as="geometry" />
@@ -119,7 +137,7 @@
         <mxCell id="FFpNQ0hJtDQw6bVMsCXk-35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="FFpNQ0hJtDQw6bVMsCXk-33" target="topology">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-33" value="Save Candidate for 24h" style="whiteSpace=wrap;html=1;fontSize=13;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;rounded=1;" vertex="1" parent="1">
+        <mxCell id="FFpNQ0hJtDQw6bVMsCXk-33" value="Save Candidate for 24h&#xa;(staging - not built)" style="whiteSpace=wrap;html=1;fontSize=13;dashed=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="190" y="380" width="120" height="60" as="geometry" />
         </mxCell>
       </root>
